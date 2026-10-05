@@ -218,6 +218,44 @@ Summary: 42 metrics compared
 
 Exit code: 1 when any regression exceeds the threshold (default: 5%); 2 when the comparison is incomplete or inconsistent (a baseline file or entry missing from the test run, paired files disagreeing on `benchmark`/`dtype`, or no comparable metrics); 0 otherwise. A regression takes precedence over an incomplete run.
 
+## Comparing two builds or images
+
+Two images at the same PyTorch commit can still differ in compiler,
+optimization level, CPU target, math library, NCCL, glibc and Python —
+and in how the container was launched. Any of those can move a benchmark,
+so record what each image is before attributing a difference to PyTorch:
+
+```bash
+python build_manifest.py record --out hermetic.json    # inside each image
+python build_manifest.py diff hermetic.json upstream.json
+```
+
+`record` takes ~1 minute and needs no GPU. `diff` prints only the fields
+that differ:
+
+| layer | fields |
+|---|---|
+| declared | `torch.__config__`, torch/CUDA/cuDNN/NCCL/Python/glibc/driver versions, pip-freeze hash |
+| binary | per `.so`: size, `.text` size, the compilers in `.comment`, GCC switches where the build recorded them, linked BLAS/NCCL/OpenMP, and the share of AVX-512/AVX2/AMX instructions sampled across `.text` |
+| runtime | CPU model, governor, allowed CPUs, NUMA nodes, `OMP_NUM_THREADS`, GPU clocks |
+
+Instruction *share*, not presence: PyTorch ships runtime-dispatched
+AVX-512 in every build, so presence says nothing about what the build
+targeted. Optimization flags come from `.GCC.command.line` and are
+reported absent when the build did not record them.
+
+Then attribute by changing one thing at a time — run one image's wheel in
+the other's container, set the same `OMP_NUM_THREADS`, pin the same CPUs —
+rather than by reasoning from the list. (Swapping `libnccl.so` works only
+where NCCL is dynamically linked; `ldd` in the manifest says which.)
+
+Two rules regardless of tooling: run the images **interleaved**
+(A B A B …) in one session on one node, because a difference measured in
+separate sessions is not attributable to the images; and run
+`nccl-tests` in both as a control — it shares no PyTorch code, so if it
+shows the same difference the cause is below PyTorch. See
+[docs/nccl-tests.md](docs/nccl-tests.md).
+
 ## A/B testing a PyTorch PR
 
 `ab_test_pytorch_pr.sh` automates the full workflow: build baseline → run benchmarks → apply PR → rebuild → run benchmarks → compare.
