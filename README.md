@@ -17,6 +17,22 @@ torchrun --nproc_per_node=8 bench_collectives.py --json results/collectives.json
 python compare_results.py results/baseline/ results/test/ --threshold 5
 ```
 
+To generate a distributed comparison report with per-JSON CSVs and an
+aggregate Markdown summary:
+
+```bash
+python generate_distributed_perf_report.py \
+  --label1 upstream results/upstream \
+  --label2 hermetic results/hermetic
+```
+
+By default the report is written to `reports/upstream_vs_hermetic/`. Use
+`--output PATH` to choose a different report directory. The report contains
+one CSV per matched JSON, `regression.csv`, `improvements.csv`, and
+`Summary.md`. JSON files whose names begin with `run_all` are excluded. If
+the selected output directory already exists, a numbered directory such as
+`upstream_vs_hermetic_1` is created so previous reports are preserved.
+
 ### Data types
 
 Each benchmark declares the dtypes for which it measures something distinct
